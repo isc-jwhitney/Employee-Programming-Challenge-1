@@ -54,13 +54,13 @@ _To enable / disable pre-extraction of input files, set `#Define PreExtractFiles
 ### Breakdown of a "warm start" + pre-extracted files run
 
 | Section                           | Time                   | % of parent |
-| --------------------------------- | ---------------------- | ----------: |
+| --------------------------------- | ---------------------: | :---------- |
 | `Run` ("Elapsed time" only)       | `0.910324 seconds`     | `100.00%`   |
 | - Waiting on children to finish   | `0.904862 seconds`     | ` 99.40%`   |
 | - Other time                      | `0.005462 seconds`     | `  0.60%`   |
 
 | Section                                     | Average Time       | Average % of parent |
-| ------------------------------------------- | :----------------- | ------------------- |
+| ------------------------------------------- | -----------------: | :------------------ |
 | `RunOnFile` (end at `$System.Event.Signal`) | `0.617868 seconds` | `100.00%`           |
 | - Non-initial `Read` commands               | `0.287351 seconds` | ` 46.51%`           |
 | - Process line data                         | `0.211859 seconds` | ` 34.29%`           |
@@ -77,13 +77,13 @@ _To enable / disable pre-extraction of input files, set `#Define PreExtractFiles
 ### Breakdown of a "warm start" + not-pre-extracted files run
 
 | Section                           | Time (seconds)         | % of parent |
-| --------------------------------- | ---------------------- | ----------: |
+| --------------------------------- | ---------------------: | :---------- |
 | `Run` ("Elapsed time" only)       | `1.525059 seconds`     | `100.00%`   |
 | - Waiting on children to finish   | `1.522190 seconds`     | ` 99.81%`   |
 | - Other time                      | `0.002869 seconds`     | `  0.19%`   |
 
 | Section                                     | Average Time       | Average % of parent |
-| ------------------------------------------- | :----------------- | ------------------- |
+| ------------------------------------------- | -----------------: | :------------------ |
 | `RunOnFile` (end at `$System.Event.Signal`) | `0.966073 seconds` | `100.00%`           |
 | - Non-initial `Read` commands               | `0.584186 seconds` | ` 60.47%`           |
 | - Process line data                         | `0.241709 seconds` | ` 25.02%`           |
@@ -99,9 +99,10 @@ _To enable / disable pre-extraction of input files, set `#Define PreExtractFiles
 
 ## Unimplemented ideas
 
-- Reduce background process activity / raise the priority of running processes.
-  - I tried setting a few IRIS switches, but they didn't have much effect on timing. 
-  - Looking at idle system performance, I don't think there's much overhead to reduce here.
-- Instead of concatenating old and new read data, rework processing logic to handle switching from old data to new data.
-- Use a group `$vectorOp` to calculate flux min/max of all `bp_flux` and `rp_flux` fields in a given file at once.
-- When a process finishes early, have it start "helping" other proceses (eg. by reading-ahead in the input file).
+- Have processes that finish their work early start "helping" other processes (eg. by reading-ahead in the input file).
+  - Or, break up work into smaller chunks.
+- Use a group `$vectorOp` to calculate min/max of all `bp_flux` and `rp_flux` fields in a given file at once.
+- Don't concatenate old + new read data. Rework processing logic to switch to the new data whenever it hits the end of the old data, instead of expecting to always have a full line available.
+- Reduce background process activity / increase IRIS process priority.
+  - I don't think there's much time to gain here, because background activity is low. I tried setting a few IRIS switches, but they didn't have much effect on timing.
+
