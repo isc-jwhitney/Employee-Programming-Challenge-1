@@ -8,7 +8,7 @@ A correct ObjectScript-only\* solution to the challenge, that runs as quickly as
 
 ## Usage
 
-Clone this repository, and ensure that user id `51773` has write access to `./data/out` and `./data/temp` (eg. by running `sudo chown 51773:51773 ./data`).
+Clone this repository, and ensure that user id `51773` has write access to `./data/out` and `./data/temp` (eg. by running `sudo chown -R 51773:51773 ./data`).
 
 | Call                                      | Description                                                                | Prerequisites                                                                  |
 | ----------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
