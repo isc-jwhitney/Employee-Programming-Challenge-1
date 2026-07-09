@@ -2,7 +2,7 @@
 
 ## Goal
 
-A correct ObjectScript-only\* solution to the challenge, that runs as quickly as possible. 
+Produce a correct ObjectScript-only\* solution to the challenge, that runs as quickly as possible. 
 
 \* System functions are allowed, but direct use of other languages/libraries/programs (eg. via `$zf`) is not.
 
