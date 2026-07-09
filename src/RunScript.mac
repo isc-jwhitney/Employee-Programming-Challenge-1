@@ -243,12 +243,13 @@ Benchmark(&data) public {
 		Set:'output tagData = 0
 		Do @(benchmarkTag)(.tagData)
 		Merge data = tagData
+		Kill:output tagData
 		Write:output !
 	}
 }
 
-/// Convert benchmark data to CSV format
-BenchmarkDataToCSV(&data) public {
+/// Used to generate box-and-whisker charts from benchmark data
+ConvertBenchmarkDataToCSV(&data) public {
 	Set benchmarkMethod = "",
 		columnNumber = 1
 	For { 
