@@ -80,7 +80,7 @@ Run()
 		Set sqlWorkQueue = $System.WorkMgr.%New(,,"SQL")
 		For i=defaultWorkQueueNumWorkers+1:1:$listLength(files) Do sqlWorkQueue.Queue("RunOnFile^RunScript", $listGet(files,i), $pid)
 	}
-	For i=1:1:$listLength(files) Do $System.Event.WaitMsg()
+	For i=1:1:$listLength(files) Do $System.Event.Wait()
 
 	#; End time
 	Set endTime = $zHorolog
@@ -106,12 +106,12 @@ RunOnFile(file, waitingPid) public
 	#; Initial read
 	#If $$$PreExtractFiles
 		Set inputFile = "/home/irisowner/dev/data/temp/" _ file _ ".csv", 
-			outputFile = "/home/irisowner/dev/data/out/"_file_".csv" 
+			outputFile = "/home/irisowner/dev/data/out/" _ file _ ".csv" 
 		Open inputFile:(/UNDEFINED:/NOXY:/READ),
 			outputFile:(/UNDEFINED:/NOXY:/WRITE:/TRUNCATE:/APPEND:/OBUFSIZE=(2**16))
 	#Else
 		Set inputFile = "/home/irisowner/dev/data/in/" _ file _ ".csv.gz", 
-			outputFile = "/home/irisowner/dev/data/out/"_file_".csv" 
+			outputFile = "/home/irisowner/dev/data/out/" _ file _ ".csv" 
 		Open inputFile:(/UNDEFINED:/NOXY:/READ:/GZIP),
 			outputFile:(/UNDEFINED:/NOXY:/WRITE:/TRUNCATE:/APPEND:/OBUFSIZE=(2**16))
 	#EndIf
@@ -206,7 +206,7 @@ Reload
 	q
 
 #; Here down is timing bencharks for pieces of different approaches.
-#If 1
+#If 0
 
 #define GetLocation /* Get the current routine/tag into `thisRoutine` / `thisTag`. There's almost definitely a better way to do this. */ ##continue
 	Try {                                                                                                                                ##continue
@@ -228,7 +228,7 @@ Reload
 Benchmark(&data) public {
 	set output = '$data(data)
 	$$$ForTag
-		Set:(tag '= thisTag)&&($extract(tag, 1, ##expression($length("Benchmark"))) = "Benchmark") benchmarkTags(tag)=""
+		Set:(tag '= thisTag)&&($extract(tag, 1, ##expression($length("Benchmark"))) = "Benchmark") benchmarkTags(tag) = ""
 	}
 	Set benchmarkOrScenarioTag=""
 	For {
@@ -236,10 +236,10 @@ Benchmark(&data) public {
 		Quit:benchmarkOrScenarioTag=""
 
 		#; If this tag starts with the last benchmark tag, it's a scenario.
-		Continue:$data(benchmarkTag)&&($extract(benchmarkOrScenarioTag,1,$length(benchmarkTag))=benchmarkTag)
+		Continue:$data(benchmarkTag)&&($extract(benchmarkOrScenarioTag, 1, $length(benchmarkTag)) = benchmarkTag)
 		Set benchmarkTag = benchmarkOrScenarioTag
 
-		Write:output benchmarkTag,!
+		Write:output benchmarkTag, !
 		Set:'output tagData = 0
 		Do @(benchmarkTag)(.tagData)
 		Merge data = tagData
@@ -323,7 +323,7 @@ BenchmarkParallelWQM(numJobs) public {
 /// Best (tie?). Worse in the real use-case.
 BenchmarkParallelWQMBorrow(numJobs) public {
 	Set start = $zHorolog,
-		sqlQueue = $System.WorkMgr.%New(,,"SQL"), 
+		sqlQueue = $System.WorkMgr.%New(,, "SQL"), 
 		sqlQueueNumWorkers = sqlQueue.NumberWorkers()
 	If numJobs <= sqlQueueNumWorkers {
 		For i=1:1:numJobs Do sqlQueue.Queue("TestMethodHang")
@@ -342,7 +342,7 @@ BenchmarkParallelWQMBorrow(numJobs) public {
 /// Children can tell their parent they're "done" without needing to wait on destructors etc.
 BenchmarkParallelWQMBorrowEvent(numJobs) public {
 	Set start = $zHorolog,
-		sqlQueue = $System.WorkMgr.%New(,,"SQL"), 
+		sqlQueue = $System.WorkMgr.%New(,, "SQL"), 
 		sqlQueueNumWorkers = sqlQueue.NumberWorkers()
 	If numJobs <= sqlQueueNumWorkers {
 		For i=1:1:numJobs Do sqlQueue.Queue("TestMethodHangSyncEvent",$pid)
@@ -447,7 +447,7 @@ BenchmarkStringSkip(&data) public {
 		Set testString = testString_",""["
 		For i=1:1:240 {
 			If $random(3) {
-				Set testString = testString _ "," _ $random(99999999999)_"."_$random(99999999999)
+				Set testString = testString _ "," _ $random(99999999999) _ "." _ $random(99999999999)
 			} Else {
 				Set testString = testString _ ",NaN"
 			}
@@ -470,7 +470,7 @@ BenchmarkStringSkipExtract(string) public {
 		stringIndex = 1
 	For i=1:1:10 {
 		Do {
-			Set stringIndex = stringIndex+1
+			Set stringIndex = stringIndex + 1
 		} While $extract(string, stringIndex) '= "["
 	}
 	Return $zHorolog - start
@@ -499,7 +499,7 @@ BenchmarkStringSkipPiece(string) public {
 BenchmarkStringSkipList(string) public {
 	Set start = $zHorolog
 	#; Not strictly skipping, but would serve the same purpose.
-	Set list = $listFromString(string,"["),
+	Set list = $listFromString(string, "["),
 		stringIndex = $list(list, 1),
 		stringIndex = $list(list, 3),
 		stringIndex = $list(list, 10)
@@ -583,8 +583,8 @@ BenchmarkMinMaxDynamicArray(string) public {
 		max = +dynamicArray."0",
 		iterator = dynamicArray.%GetIterator()
 	While iterator.%GetNext(, .val) {
-		Set:val>max max=+val
-		Set:val<min&&val min=+val
+		Set:val>max max = +val
+		Set:val<min&&val min = +val
 	}
 	Return $zHorolog - start
 }
@@ -600,18 +600,18 @@ BenchmarkStringConcatDefault(&unused) public {
 	Set input = "",
 		$piece(input, "x", 500000) = "",
 		start = $zHorolog
-	Set output = input_input
+	Set output = input _ input
 	Return $zHorolog - start
 }
 
 BenchmarkStringConcatInPlace(&buffer) public {
-	Set input="",
-		$piece(input, "x", 500000)="",
+	Set input = "",
+		$piece(input, "x", 500000) = "",
 		start = $zHorolog
-	Set:'$data(buffer) buffer="",
-		$piece(buffer, "z", 1000000)=""
-	Set $extract(buffer,      1, 500000)=input,
-		$extract(buffer, 500001,      *)=input
+	Set:'$data(buffer) buffer = "",
+		$piece(buffer, "z", 1000000) = ""
+	Set $extract(buffer,      1, 500000) = input,
+		$extract(buffer, 500001,      *) = input
 	Return $zHorolog - start
 }
 
@@ -713,10 +713,10 @@ BenchmarkMaxPercent(&data) public {
 /// Best (typically beats Hybrid by a _small_ amount)
 BenchmarkMaxPercentVector(length) public {
 	For i=1:1:length {
-		Set $vector(bpFluxMaxVector,i,"decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(bpFluxMinVector,i,"decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(rpFluxMaxVector,i,"decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(rpFluxMinVector,i,"decimal") = +($random(12351239874) _ "." _ $random(12351239874))
+		Set $vector(bpFluxMaxVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
+			$vector(bpFluxMinVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
+			$vector(rpFluxMaxVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
+			$vector(rpFluxMinVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874))
 	}
 	Set start = $zHorolog,
 		bpFluxPercentChangeVector = $vectorOp("v/", $vectorOp("v-", bpFluxMaxVector, bpFluxMinVector), bpFluxMinVector, $vectorOp("!=", bpFluxMinVector, 0)),
@@ -749,10 +749,10 @@ BenchmarkMaxPercentLoop(length) public {
 
 BenchmarkMaxPercentHybrid(length) public {
 	For i=1:1:length {
-		Set $vector(bpFluxMaxVector,i,"decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(bpFluxMinVector,i,"decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(rpFluxMaxVector,i,"decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(rpFluxMinVector,i,"decimal") = +($random(12351239874) _ "." _ $random(12351239874))
+		Set $vector(bpFluxMaxVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
+			$vector(bpFluxMinVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
+			$vector(rpFluxMaxVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
+			$vector(rpFluxMinVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874))
 	}
 	Set start = $zHorolog,
 		bpFluxPercentChangeVector = $vectorOp("v/", $vectorOp("v-", bpFluxMaxVector, bpFluxMinVector), bpFluxMinVector, $vectorOp("!=", bpFluxMinVector, 0)),
@@ -766,3 +766,4 @@ BenchmarkMaxPercentHybrid(length) public {
 }
 
 #EndIf
+
