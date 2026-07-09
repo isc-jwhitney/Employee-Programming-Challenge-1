@@ -97,7 +97,7 @@ _To enable / disable pre-extraction of input files, set `#Define PreExtractFiles
 | - Skip commented lines ("#...")             | `0.000205 seconds` | `  0.02%`           |
 | - Signal parent process                     | `0.000065 seconds` | `  0.01%`           |
 
-## Unimplemented ideas
+## Untested ideas
 
 - Have processes that finish their work early start "helping" other processes (eg. by reading-ahead in the input file).
   - Or, break up work into smaller chunks.
