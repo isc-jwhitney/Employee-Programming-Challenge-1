@@ -2,7 +2,7 @@ services:
   iris:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile_mini
     restart: always
     environment:
       - ISC_CPF_MERGE_FILE=/home/irisowner/dev/merge.cpf
