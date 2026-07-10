@@ -1,87 +1,113 @@
 ROUTINE RunScript
 
-#; Set to 0 to include file extration in the reported "elapsed time".
-#Define PreExtractFiles 1
-
 #; We will run this routine to do the benchmark
 Run()
 {
 	#; extract files if necessary from .data/in to .data/temp
-	#If $$$PreExtractFiles
-		Set files = $listBuild(
-			"EpochPhotometry_000000-003111",
-			"EpochPhotometry_003112-005263",
-			"EpochPhotometry_005264-006601",
-			"EpochPhotometry_006602-007952",
-			"EpochPhotometry_007953-010234",
-			"EpochPhotometry_010235-012597",
-			"EpochPhotometry_012598-014045",
-			"EpochPhotometry_014046-015369",
-			"EpochPhotometry_015370-016240",
-			"EpochPhotometry_016241-017018",
-			"EpochPhotometry_017019-017658",
-			"EpochPhotometry_017659-018028",
-			"EpochPhotometry_018029-018472",
-			"EpochPhotometry_018473-019161",
-			"EpochPhotometry_019162-019657",
-			"EpochPhotometry_019658-020091",
-			"EpochPhotometry_020092-020493",
-			"EpochPhotometry_020494-020747",
-			"EpochPhotometry_020748-020984",
-			"EpochPhotometry_020985-021233"
-		)
-		Do ##class(%File).CreateDirectory("/home/irisowner/dev/data/temp")
-		For i=1:1:$listLength(files) {
-			Set compressedStream = ##class(%Stream.FileBinaryGzip).%New(),
-				extractedStream = ##class(%Stream.FileBinary).%New()
-			Do compressedStream.LinkToFile("/home/irisowner/dev/data/in/" _ $list(files, i) _ ".csv.gz"),
-				extractedStream.LinkToFile("/home/irisowner/dev/data/temp/" _ $list(files, i) _ ".csv"),
-				extractedStream.CopyFrom(compressedStream),
-				compressedStream.%Close(),
-				extractedStream.%Save()
-		}
-	#EndIf
 
 	#; Start time
 	Set startTime = $zHorolog
-		
-	Set files = $listBuild(
-		"EpochPhotometry_000000-003111",
-		"EpochPhotometry_003112-005263",
-		"EpochPhotometry_005264-006601",
-		"EpochPhotometry_006602-007952",
-		"EpochPhotometry_007953-010234",
-		"EpochPhotometry_010235-012597",
-		"EpochPhotometry_012598-014045",
-		"EpochPhotometry_014046-015369",
-		"EpochPhotometry_015370-016240",
-		"EpochPhotometry_016241-017018",
-		"EpochPhotometry_017019-017658",
-		"EpochPhotometry_017659-018028",
-		"EpochPhotometry_018029-018472",
-		"EpochPhotometry_018473-019161",
-		"EpochPhotometry_019162-019657",
-		"EpochPhotometry_019658-020091",
-		"EpochPhotometry_020092-020493",
-		"EpochPhotometry_020494-020747",
-		"EpochPhotometry_020748-020984",
-		"EpochPhotometry_020985-021233"
-	)
-	Do ##class(%File).CreateDirectory("/home/irisowner/dev/data/out")
 
-	#; Process spawning overhead is a problem, so use existing jobs via the WQM.
-	Set defaultWorkQueue = $System.WorkMgr.%New(), 
-		defaultWorkQueueNumWorkers = defaultWorkQueue.NumberWorkers()
-	If $listLength(files) <= defaultWorkQueueNumWorkers {
-		For i=1:1:$listLength(files) Do defaultWorkQueue.Queue("RunOnFile^RunScript", $listGet(files,i), $pid)
-	} Else {
-		#; There aren't enough jobs in the general pool to process all files concurrently: Use the SQL pool as well.
-		For i=1:1:defaultWorkQueueNumWorkers Do defaultWorkQueue.Queue("RunOnFile^RunScript", $listGet(files,i), $pid)
-		Set sqlWorkQueue = $System.WorkMgr.%New(,,"SQL")
-		For i=defaultWorkQueueNumWorkers+1:1:$listLength(files) Do sqlWorkQueue.Queue("RunOnFile^RunScript", $listGet(files,i), $pid)
-	}
-	For i=1:1:$listLength(files) Do $System.Event.Wait()
-
+	#; Code Explaination (expanded for readability):
+	#; 
+	#;   // Set the current working directory to "/home/irisowner/dev/data".
+	#;   // Equivalent to $System.Process.CurrentDirectory("~/dev/data")
+	#;   do $zu(168, "~/dev/data")
+	#;   
+	#;   // Set the input filename `f` to the path of the first file under /home/irisowner/dev/data/in/*
+	#;   set f = $zSearch("in/*")
+	#;   
+	#;   // Loop through all files
+	#;   for {
+	#;     
+	#;     // Construct the output filename `o` from the input filename `f`
+	#;     // Example: "in/EpochPhotometry_006602-007952.csv.gz" --> "out/EpochPhotometry_006602-007952.csv"
+	#;     set o = "out" _ $extract(f, 3, *-3)
+	#;     
+	#;     // Open the input file `f` ("GZIP"ed) and the output file `o` ("W"rite / "T"runcate-if-exists)
+	#;     open f:/GZIP, 
+	#;          o:"WT"
+	#;     
+	#;     // Write a CSV header to the output file `o`
+	#;     use o 
+	#;     write "source_id,bp_min_flux,bp_max_flux,rp_min_flux,rp_max_flux,percentage_change"
+	#;     
+	#;     // Read and discard commented lines + the header at the beginning of the input CSV file `f` (this always comes out to 367 lines)
+	#;     // Leave the first line of data in `l`
+	#;     use f 
+	#;     for i=1:1:367 {
+	#;       read l 
+	#;     } 
+	#;     
+	#;     // Loop until we hit the end of the current file
+	#;     try {
+	#;       for {
+	#;       
+	#;         // Loop twice: Once to process bp_flux (i=2), and once to process rp_flux (i=3)
+	#;         // - bp_flux is the 10th (i*5 = 10) '['-delimited part of the line
+	#;         // - rp_flux is the 15th (i*5 = 15) '['-delimited part of the line
+	#;         // 
+	#;         // Use i=2/3 instead of i=10/15 to save characters in the for loop (i=2:1:3 instead of i=10:5:15) and variable subscripts (b(2) instead of b(10)).
+	#;         // 
+	#;         for i=2:1:3 {
+	#;           
+	#;           // Convert bp_flux / rp_flux into a decimal vector `t`
+	#;           //   NaN will be treated as 0
+	#;           set t = $vectorOp("fromstring", $p(l, "[", i*5), "decimal"),
+	#;           
+	#;               // Set `a(i)` to the max value in the flux vector `t`
+	#;               a(i) = $vectorOp("max", t),
+	#;             
+	#;               // Set `c(i)` to the min non-zero value in the flux vector `t`
+	#;               c(i) = $vectorOp("min", t, $vectorOp("!=", t, 0)),
+	#;             
+	#;               // Set `b(i)` to the percent change value (max-min)/min, or 0 if min = 0
+	#;               b(i) = $select(c(i): a(i) - c(i) / c(i), 1: 0)
+	#;             
+	#;         }
+	#;         
+	#;         // We've processed bp_flux and rp_flux at this point, and have:
+	#;         // - a(2) = max bp_flux
+	#;         // - a(3) = max rp_flux
+	#;         // - b(2) = percent change bp_flux
+	#;         // - b(3) = percent change rp_flux
+	#;         // - c(2) = min bp_flux
+	#;         // - c(3) = min rp_flux
+	#;         
+	#;         // Set b(2) to the larger of b(2) (percent change bp_flux) and b(3) (percent change rp_flux)
+	#;         set:b(3)>b(2) b(2) = b(3)
+	#;         
+	#;         // If b(2) (max percent flux change) is greater than the threshold (1 = 100%),
+	#;         //   write <newline>source_id,min_bp_flux,max_bp_flux,min_rp_flux,max_rp_flux,percent_change*100
+	#;         // to the output file `o`
+	#;         // 
+	#;         // source_id is the 2nd ','-delimited part of the line
+	#;         // 
+	#;         // Use $listToString instead of writing out commas to save characters.
+	#;         // 
+	#;         use o 
+	#;         write:b(2)>1 !, $listToString($listBuild($piece(l, ",", 2), c(2), a(2), c(3), a(3), b(2) * 100))
+	#;         
+	#;         // Read the next line `l` from the input file `f`
+	#;         use f
+	#;         read l
+	#;       }
+	#;     
+	#;     // When we hit the end of the file, the read will throw an error
+	#;     } catch {
+	#;       
+	#;       // Close the input file `f` and the output file `o` (flushes data, and makes it easier to re-run the solution) 
+	#;       close o, f
+	#;     }
+	#;     
+	#;     // Set `f` to the path of the next file from under [workingDirectory]/in/*
+	#;     // If we've processed all of the files, exit the loop
+	#;     set f = $zSearch("")
+	#;     quit:f=""
+	#;  }
+	#;       
+	d $zu(168,"~/dev/data") s f=$zse("in/*") f{s o="out"_$e(f,3,*-3) o f:/GZIP,o:"WT" u o w "source_id,bp_min_flux,bp_max_flux,rp_min_flux,rp_max_flux,percentage_change" u f f i=1:1:367{r l} try{f{f i=2:1:3{s t=$vop("fromstring",$p(l,"[",i*5),"decimal"),a(i)=$vop("max",t),c(i)=$vop("min",t,$vop("!=",t,0)),b(i)=$s(c(i):a(i)-c(i)/c(i),1:0)} s:b(3)>b(2) b(2)=b(3) u o w:b(2)>1 !,$lts($lb($p(l,",",2),c(2),a(2),c(3),a(3),b(2)*100)) u f r l}}catch{c o,f} s f=$zse("") q:f=""}
+	
 	#; End time
 	Set endTime = $zHorolog
 	#; Elapsed time in seconds
@@ -89,682 +115,7 @@ Run()
 	Write "Elapsed time: ", elapsed, " seconds", !
 }
 
-RunOnFile(file, waitingPid) public
-{
-	#; Min required change to be included in output (1 = 100%)
-	#define minRequiredFluxPercentChange 1
-
-	#; Value >= max-line-length-in-input-files
-	#define maxLineLength (2**16)
-
-	#; Value >= maxLineLength
-	#define readLength (2**16)
-
-	#; Write code to flush device output
-	#define flushOutput *-3
-	
-	#; Initial read
-	#If $$$PreExtractFiles
-		Set inputFile = "/home/irisowner/dev/data/temp/" _ file _ ".csv", 
-			outputFile = "/home/irisowner/dev/data/out/" _ file _ ".csv" 
-		Open inputFile:(/UNDEFINED:/NOXY:/READ),
-			outputFile:(/UNDEFINED:/NOXY:/WRITE:/TRUNCATE:/APPEND:/OBUFSIZE=(2**16))
-	#Else
-		Set inputFile = "/home/irisowner/dev/data/in/" _ file _ ".csv.gz", 
-			outputFile = "/home/irisowner/dev/data/out/" _ file _ ".csv" 
-		Open inputFile:(/UNDEFINED:/NOXY:/READ:/GZIP),
-			outputFile:(/UNDEFINED:/NOXY:/WRITE:/TRUNCATE:/APPEND:/OBUFSIZE=(2**16))
-	#EndIf
-
-	Use inputFile
-	Read string#$$$readLength 
-	Set stringMaxIndexForAGuaranteedFullLine = $length(string) - $$$maxLineLength, 
-		(stringIndex, dataRow) = 1
-	
-	#; Skip lines starting with "#"
-	Do { 
-		Set stringIndex = $find(string, $char(10), stringIndex) 
-	} While $extract(string, stringIndex) = "#" 
-
-	#; Use $zEOF for future reads
-	Do $System.Process.SetZEOF(1)
-	
-	For {
-		#; Read more data, if we might not have a full line to process
-		If stringIndex > stringMaxIndexForAGuaranteedFullLine {
-			Read newString#$$$readLength 
-			Set:'$zEOF string = $extract(string, stringIndex, *) _ newString, 
-				stringMaxIndexForAGuaranteedFullLine = $length(string) - $$$maxLineLength,
-				stringIndex = 1
-					
-			#; Skip to source_id in the next line
-			Set stringIndex2 = $find(string, ",", $find(string, $char(10), stringIndex))
-
-			#; If the read failed (EOF) and there are no more lines to process, exit the loop
-			Quit:$zEOF&&'stringIndex2
-
-		} Else {
-			#; Skip to source_id in the next line
-			Set stringIndex2 = $find(string, ",", $find(string, $char(10), stringIndex))
-		}
-
-		#; Add source_id to sourceIdLocalArray
-		Set stringIndex = $find(string, ",", stringIndex2), 
-			sourceIdLocalArray(dataRow) = $extract(string, stringIndex2, stringIndex - ##Expression($length(",") + 1)),
-		
-			#; Skip to bp_flux
-			stringIndex2 = $find(string, "[", $find(string, "[", $find(string, "[", $find(string, "[", $find(string, "[", $find(string, "[", $find(string, "[", $find(string, "[", $find(string, "[", stringIndex))))))))),
-
-			#; Add min, max bp_flux values to bpFluxMinVector, bpFluxMaxVector
-			#;  fromstring/decimal turns NaN into 0
-			stringIndex = $find(string, """", stringIndex2),
-			fluxVector = $vectorOp("fromstring", $extract(string, stringIndex2, stringIndex - ##Expression($length("]""") + 1)), "decimal"),
-			$vector(bpFluxMinVector, dataRow, "decimal") = $vectorOp("min", fluxVector, $vectorOp("!=", fluxVector, 0)),
-			$vector(bpFluxMaxVector, dataRow, "decimal") = $vectorOp("max", fluxVector),
-
-			#; Skip to rp_flux
-			stringIndex2 = $find(string, "[", $find(string, "[", $find(string, "[", $find(string, "[", $find(string, "[", stringIndex))))),
-
-			#; Add min, max rp_flux values to rpFluxMinVector, rpFluxMaxVector
-			stringIndex = $find(string, """", stringIndex2),
-			fluxVector = $vectorOp("fromstring", $extract(string, stringIndex2, stringIndex - ##Expression($length("]""") + 1)), "decimal"),
-			$vector(rpFluxMinVector, dataRow, "decimal") = $vectorOp("min", fluxVector, $vectorOp("!=", fluxVector, 0)),
-			$vector(rpFluxMaxVector, dataRow, "decimal") = $vectorOp("max", fluxVector),
-
-			#; Increment line number
-			dataRow = dataRow + 1
-	}
-
-	#; Calculate % change for bp_flux and rp_flux
-	Set bpFluxPercentChangeVector = $vectorOp("v/", $vectorOp("v-", bpFluxMaxVector, bpFluxMinVector), bpFluxMinVector, $vectorOp("!=", bpFluxMinVector, 0)),
-		rpFluxPercentChangeVector = $vectorOp("v/", $vectorOp("v-", rpFluxMaxVector, rpFluxMinVector), rpFluxMinVector, $vectorOp("!=", rpFluxMinVector, 0)),
-
-		#; Calculate max % change between bp_flux and rp_flux
-		fluxMaxPercentChangeVector = $vectorOp("vset", bpFluxPercentChangeVector, rpFluxPercentChangeVector, $vectorOp("v<", bpFluxPercentChangeVector, rpFluxPercentChangeVector))
-
-	#; Write header
-	Use outputFile
-	Write "source_id,bp_min_flux,bp_max_flux,rp_min_flux,rp_max_flux,percentage_change"
-
-	#; Write data
-	For i=1:1:dataRow-1 {
-		Set fluxMaxPercentChange = $vector(fluxMaxPercentChangeVector, i)
-		Write:fluxMaxPercentChange>$$$minRequiredFluxPercentChange $char(10) _ sourceIdLocalArray(i) _ "," _ $vector(bpFluxMinVector, i) _ "," _ $vector(bpFluxMaxVector, i) _ "," _ $vector(rpFluxMinVector, i) _ "," _ $vector(rpFluxMaxVector, i) _ "," _ (fluxMaxPercentChange*100)
-	}
-	Write $$$flushOutput
-	
-	#; Notify parent process that output has been fully written
-	Do $System.Event.Signal(waitingPid)
-
-	#; Cleanup
-	Close inputFile, outputFile
-}
-
 #; For testing
 Reload
 	zw $System.OBJ.Load("/home/irisowner/dev/src/RunScript.mac","ck")
 	q
-
-#; Here down is timing bencharks for pieces of different approaches.
-#If 0
-
-#define GetLocation /* Get the current routine/tag into `thisRoutine` / `thisTag`. There's almost definitely a better way to do this. */ ##continue
-	Try {                                                                                                                                ##continue
-		ZTrap ""                                                                                                                         ##continue
-	} Catch ex {                                                                                                                         ##continue
-		Set thisTag = $piece(ex.Location, "+"),                                                                                          ##continue
-			thisRoutine = $piece(ex.Location, "^", 2)                                                                                    ##continue
-	}
-
-#define ForTag /* Iterate over tags in the current routine in `tag`. Also sets `thisRoutine` / `thisTag` via $$$GetLocation. */  ##continue
-	/* There is a way to do this using $zu functions without parsing int code, but it's messier. */                              ##continue
-	$$$GetLocation                                                                                                               ##continue
-	Set routine = ##class(%Routine).%OpenId(thisRoutine), matcher = ##class(%Regex.Matcher).%New("^([a-zA-Z%][a-zA-Z0-9%]*).*")  ##continue
-	While 'routine.AtEnd {                                                                                                       ##continue
-		Continue:'matcher.Match(routine.ReadLine())                                                                              ##continue
-		Set tag = matcher.Group(1)
-
-/// Run all benchmarks (any tag with the name Benchmark<X> is a benchmark implemented by "scenario" tags of the form Benchmark<X><Y>)
-Benchmark(&data) public {
-	set output = '$data(data)
-	$$$ForTag
-		Set:(tag '= thisTag)&&($extract(tag, 1, ##expression($length("Benchmark"))) = "Benchmark") benchmarkTags(tag) = ""
-	}
-	Set benchmarkOrScenarioTag=""
-	For {
-		Set benchmarkOrScenarioTag = $order(benchmarkTags(benchmarkOrScenarioTag))
-		Quit:benchmarkOrScenarioTag=""
-
-		#; If this tag starts with the last benchmark tag, it's a scenario.
-		Continue:$data(benchmarkTag)&&($extract(benchmarkOrScenarioTag, 1, $length(benchmarkTag)) = benchmarkTag)
-		Set benchmarkTag = benchmarkOrScenarioTag
-
-		Write:output benchmarkTag, !
-		Set:'output tagData = 0
-		Do @(benchmarkTag)(.tagData)
-		Merge data = tagData
-		Kill:output tagData
-		Write:output !
-	}
-}
-
-/// Used to generate box-and-whisker charts from benchmark data
-ConvertBenchmarkDataToCSV(&data) public {
-	Set benchmarkMethod = "",
-		columnNumber = 1
-	For { 
-		Set benchmarkMethod = $order(data(benchmarkMethod)) 
-		Quit:benchmarkMethod=""
-		Set $list(line(1), columnNumber) = benchmarkMethod
-		Set scenario = ""
-		For {
-			Set scenario = $order(data(benchmarkMethod, scenario))
-			Quit:scenario=""
-			For i=1:1:data(benchmarkMethod, scenario) Set $list(line(i+2), columnNumber) = data(benchmarkMethod, scenario, i)
-			Set $list(line(2), columnNumber) = scenario,
-				columnNumber = columnNumber+1
-		}
-	}
-	Set rowNumber = ""
-	For {
-		Set rowNumber = $Order(line(rowNumber))
-		Quit:rowNumber=""
-		Write $listToString(line(rowNumber),, 1), !
-	}
-}
-
-#def1arg RunScenarios(%numIterationsThenArgs) /* Run this benchmark tag's scenarios with the given # of iterations / args. */                                                                                                                             ##continue
-	Set output = '$data(data)                                                                                                                                                                                                                             ##continue
-	$$$ForTag                                                                                                                                                                                                                                             ##continue
-		Continue:tag=thisTag||($extract(tag, 1, $length(thisTag)) '= thisTag)                                                                                                                                                                             ##continue
-		Set scenarioName = $extract(tag, $length(thisTag) + 1, *)                                                                                                                                                                                         ##continue
-		Write:output "- " _ scenarioName                                                                                                                                                                                                                  ##continue
-		For i=1:1:##Expression($p("%numIterationsThenArgs",",")) {                                                                                                                                                                                        ##continue
-			Write:output&&'(i#(##Expression($select($piece("%numIterationsThenArgs", ",") <= 10: 1, 1: $piece("%numIterationsThenArgs", ",") / 10)))) "."                                                                                                 ##continue
-			Set data(thisTag, scenarioName, $increment(data(thisTag, scenarioName))) = $$@(tag)(##Expression($piece("%numIterationsThenArgs", ",", 2, *)))                                                                                                ##continue
-			Set:'$data(data(thisTag, scenarioName, "min"))||(data(thisTag, scenarioName, "min") > data(thisTag, scenarioName, data(thisTag, scenarioName))) data(thisTag, scenarioName, "min") = data(thisTag, scenarioName, data(thisTag, scenarioName)) ##continue
-			Set:'$data(data(thisTag, scenarioName, "max"))||(data(thisTag, scenarioName, "max") < data(thisTag, scenarioName, data(thisTag, scenarioName))) data(thisTag, scenarioName, "max") = data(thisTag, scenarioName, data(thisTag, scenarioName)) ##continue
-			Set data(thisTag, scenarioName, "mean") = $get(data(thisTag, scenarioName, "mean")) + data(thisTag, scenarioName, data(thisTag, scenarioName))                                                                                                ##continue
-		}                                                                                                                                                                                                                                                 ##continue
-		Set data(thisTag, scenarioName, "mean") = data(thisTag, scenarioName, "mean") / data(thisTag, scenarioName)                                                                                                                                       ##continue
-		Write:output !, "  - min:  " _ $fnumber(data(thisTag, scenarioName, "min"), "", 6), !, "  - mean: " _ $fnumber(data(thisTag, scenarioName, "mean"), "", 6), !, "  - max:  " _ $fnumber(data(thisTag, scenarioName, "max"), "", 6), !              ##continue
-	}
-
-/// ----------------------------
-
-/// Meant to benchmark startup time / max # of processes only. Does not check realistic workloads!
-BenchmarkParallel(&data) public {
-	$$$RunScenarios(3, 20)
-}
-
-/// Jobbing is way slower than the WQM, even when it's using Job Servers. Why?
-BenchmarkParallelJobGlobal(numJobs) public {
-	Set start = $zHorolog,
-		^sync = numJobs
-	For i=1:1:numJobs Job TestMethodHangSyncGlobal
-	While ^sync { Hang 0.01 }
-	Return $zHorolog-start
-}
-
-BenchmarkParallelJobEvent(numJobs) public {
-	Set start = $zHorolog
-	For i=1:1:numJobs Job TestMethodHangSyncEvent($pid)
-	For i=1:1:numJobs Do $System.Event.Wait()
-	Return $zHorolog-start
-}
-
-BenchmarkParallelWQM(numJobs) public {
-	Set start = $zHorolog,
-		queue = $System.WorkMgr.%New()
-	For i=1:1:numJobs Do queue.Queue("TestMethodHang")
-	Do queue.Sync()
-	Return $zHorolog - start
-}
-
-/// Best (tie?). Worse in the real use-case.
-BenchmarkParallelWQMBorrow(numJobs) public {
-	Set start = $zHorolog,
-		sqlQueue = $System.WorkMgr.%New(,, "SQL"), 
-		sqlQueueNumWorkers = sqlQueue.NumberWorkers()
-	If numJobs <= sqlQueueNumWorkers {
-		For i=1:1:numJobs Do sqlQueue.Queue("TestMethodHang")
-		Do sqlQueue.Sync()
-	} Else {
-		For i=1:1:sqlQueueNumWorkers Do sqlQueue.Queue("TestMethodHang")
-		Set defaultQueue = $System.WorkMgr.%New()
-		For i=1:1:numJobs-sqlQueueNumWorkers Do defaultQueue.Queue("TestMethodHang")
-		Do defaultQueue.Sync(), 
-			sqlQueue.Sync()
-	}
-	Return $zHorolog - start
-}
-
-/// Best (tie?). Better in the real use-case.
-/// Children can tell their parent they're "done" without needing to wait on destructors etc.
-BenchmarkParallelWQMBorrowEvent(numJobs) public {
-	Set start = $zHorolog,
-		sqlQueue = $System.WorkMgr.%New(,, "SQL"), 
-		sqlQueueNumWorkers = sqlQueue.NumberWorkers()
-	If numJobs <= sqlQueueNumWorkers {
-		For i=1:1:numJobs Do sqlQueue.Queue("TestMethodHangSyncEvent",$pid)
-	} Else {
-		For i=1:1:sqlQueueNumWorkers Do sqlQueue.Queue("TestMethodHangSyncEvent",$pid)
-		Set defaultQueue = $System.WorkMgr.%New()
-		For i=1:1:numJobs-sqlQueueNumWorkers Do defaultQueue.Queue("TestMethodHangSyncEvent",$pid)
-	}
-	For i=1:1:numJobs Do $System.Event.Wait()
-	Return $zHorolog - start
-}
-
-BenchmarkParallelHybrid(numJobs) public {
-	Set start = $zHorolog,
-		queue = $System.WorkMgr.%New(), 
-		queueNumWorkers = queue.NumberWorkers()
-	If numJobs <= queueNumWorkers {
-		For i=1:1:numJobs Do queueNumWorkers.Queue("TestMethodHang")
-	} Else {
-		For i=1:1:queueNumWorkers Do queue.Queue("TestMethodHang")
-		For i=1:1:numJobs-queueNumWorkers Job TestMethodHangSyncEvent($pid)
-		For i=1:1:numJobs-queueNumWorkers Do $System.Event.Wait()
-	}
-	Do queue.Sync()
-	Return $zHorolog - start
-}
-
-TestMethodHang() public {
-	Hang 1
-}
-
-TestMethodHangSyncGlobal() public {
-	Hang 1
-	Do $increment(^sync, -1)
-}
-
-TestMethodHangSyncEvent(pid) public {
-	Hang 1
-	Do $System.Event.Signal(pid)
-}
-
-/// ----------------------------
-
-BenchmarkRead(&data) public {
-	$$$RunScenarios(10)
-}
-
-BenchmarkReadDefault() public {
-	Set start = $zHorolog,
-		inputFile = "/home/irisowner/dev/data/in/EpochPhotometry_000000-003111.csv.gz"
-	Open inputFile:(/READ:/GZIP)
-	Try {
-		Use inputFile
-		For  Read x
-	} Catch {}
-	Close inputFile
-	Return $zHorolog - start
-}
-
-BenchmarkReadUndef() public {
-	Set start = $zHorolog,
-		inputFile = "/home/irisowner/dev/data/in/EpochPhotometry_000000-003111.csv.gz"
-	Open inputFile:(/UNDEFINED:/READ:/GZIP)
-	Try {
-		Use inputFile
-		For  Read x#(1024*1024)
-	} catch {}
-	Close inputFile
-	Return $zHorolog - start
-}
-
-BenchmarkReadNoXY() public {
-	Set start = $zHorolog,
-		inputFile = "/home/irisowner/dev/data/in/EpochPhotometry_000000-003111.csv.gz"
-	Open inputFile:(/NOXY:/READ:/GZIP)
-	Try {
-		Use inputFile
-		For  Read x
-	} Catch {}
-	Close inputFile
-	Return $zHorolog - start
-}
-
-/// Best
-BenchmarkReadUndefNoXY() public {
-	Set start = $zHorolog,
-		inputFile = "/home/irisowner/dev/data/in/EpochPhotometry_000000-003111.csv.gz"
-	Open inputFile:(/UNDEFINED:/NOXY:/READ:/GZIP)
-	Try {
-		Use inputFile
-		For  Read x#(1024*1024)
-	} Catch {}
-	Close inputFile
-	Return $zHorolog - start
-}
-
-/// ----------------------------
-
-BenchmarkStringSkip(&data) public {
-	Set testString = ""
-	For j=1:1:20 {
-		Set testString = testString_",""["
-		For i=1:1:240 {
-			If $random(3) {
-				Set testString = testString _ "," _ $random(99999999999) _ "." _ $random(99999999999)
-			} Else {
-				Set testString = testString _ ",NaN"
-			}
-		}
-		Set testString = testString _ "]"", other, data, goes, 11, here, [NaN]"
-	}
-	$$$RunScenarios(100, testString)
-}
-
-/// Best min (best-case) / mean (average-case)
-BenchmarkStringSkipFind(string) public {
-	Set start = $zHorolog,
-		stringIndex = 1
-	For i=1:1:10 Set stringIndex = $find(string, "[")
-	Quit $zHorolog - start
-}
-
-BenchmarkStringSkipExtract(string) public {
-	Set start = $zHorolog,
-		stringIndex = 1
-	For i=1:1:10 {
-		Do {
-			Set stringIndex = stringIndex + 1
-		} While $extract(string, stringIndex) '= "["
-	}
-	Return $zHorolog - start
-}
-
-BenchmarkStringSkipVector(string) public {
-	Set start = $zHorolog
-	#; Not strictly skipping, but would serve the same purpose.
-	Set vec = $vectorOp("fromstring", string, "string"),
-		stringIndex = $vector(vec, 1),
-		stringIndex = $vector(vec, 3),
-		stringIndex = $vector(vec, 10)
-	Return $zHorolog - start
-}
-
-/// Best max (worst-case)
-BenchmarkStringSkipPiece(string) public {
-	Set start = $zHorolog
-	#; Not strictly skipping, but would serve the same purpose.
-	Set stringIndex = $piece(string, "[", 1),
-		stringIndex = $piece(string, "[", 3),
-		stringIndex = $piece(string, "[", 10)
-	Return $zHorolog - start
-}
-
-BenchmarkStringSkipList(string) public {
-	Set start = $zHorolog
-	#; Not strictly skipping, but would serve the same purpose.
-	Set list = $listFromString(string, "["),
-		stringIndex = $list(list, 1),
-		stringIndex = $list(list, 3),
-		stringIndex = $list(list, 10)
-	Return $zHorolog - start
-}
-
-/// ----------------------------
-
-BenchmarkMinMax(&data) public {
-	Set testString = "["
-	For i=1:1:2000 {
-		If $random(3) {
-			Set testString = testString _ "," _ $random(999999) _ "." _ $random(999999)
-		} Else {
-			Set testString = testString _ ",NaN"
-		}
-	}
-	Set testString = testString _ "]"", other, data, goes, 11, here, [NaN]"
-	$$$RunScenarios(10, testString)
-}
-
-BenchmarkMinMaxCustom(string) public {
-	Set start = $zHorolog,
-		(stringIndex2, fluxStringIndex) = 1,
-		stringIndex = $find(string, "]", stringIndex2) + 1,
-		fluxString = $extract(string, stringIndex2, stringIndex - 3),
-		minIntLength = 999, 
-		(maxIntLength, max, min) = 0,
-		fluxStringWithTrailingComma = fluxString _ ","
-	For {
-		Set currentIntStartIndex = fluxStringIndex, 
-			fluxStringIndex = $find(fluxString, ".", fluxStringIndex), 
-			currentIntFirstDigit = $extract(fluxString, currentIntStartIndex)
-		While currentIntFirstDigit = "N" {
-			Set currentIntStartIndex = currentIntStartIndex + 4,
-				currentIntFirstDigit = $extract(fluxString, currentIntStartIndex)
-		}
-		Quit:currentIntStartIndex>=fluxStringIndex
-		Set currentIntLength = fluxStringIndex - 1 - currentIntStartIndex, 
-			fluxStringIndex = $find(fluxStringWithTrailingComma, ",", fluxStringIndex)
-		If currentIntLength > maxIntLength {
-			Set max = $extract(fluxString, currentIntStartIndex, fluxStringIndex - 2),
-				maxIntLength = currentIntLength,
-				maxIntFirstDigit = currentIntFirstDigit
-		} ElseIf currentIntLength < minIntLength {
-			Set min = $extract(fluxString, currentIntStartIndex, fluxStringIndex - 2),
-				minIntLength = currentIntLength,
-				minIntFirstDigit = currentIntFirstDigit
-		} Else {
-			Set currentNumber = $extract(fluxString, currentIntStartIndex, fluxStringIndex - 2)
-			If (currentIntLength = maxIntLength && (currentIntFirstDigit > maxIntFirstDigit || (currentIntFirstDigit = maxIntFirstDigit && (currentNumber > max)))) {
-				Set max = currentNumber,
-					maxIntFirstDigit = currentIntFirstDigit
-			} Else {
-				Set:(currentIntLength = minIntLength)&&(currentIntFirstDigit < minIntFirstDigit || (currentIntFirstDigit = minIntFirstDigit && (currentNumber < min))) min = currentNumber, 
-					minIntFirstDigit = currentIntFirstDigit
-			}
-		}
-		Quit:'fluxStringIndex
-	}
-	Return $zHorolog - start
-}
-
-/// Best
-BenchmarkMinMaxVector(string) public {
-	Set start = $zHorolog,
-		stringIndex2 = 1,
-		stringIndex = $find(string, """", stringIndex2),
-		fluxVector = $vectorOp("fromstring", $extract(string, stringIndex2, stringIndex - 3), "decimal"),
-		min = $vectorOp("min", fluxVector, $vectorOp("!=", fluxVector, 0)),
-		max = $vectorOp("max", fluxVector)
-	Return $zHorolog - start
-}
-
-BenchmarkMinMaxDynamicArray(string) public {
-	Set start = $zHorolog
-	Set stringIndex2=1
-	Set stringIndex = $find(string, """", stringIndex2)
-	Set dynamicArray = ##class(%DynamicArray).%FromJSON($replace($extract(string, stringIndex2, stringIndex - 2), "NaN", "0"))
-	Set min = +dynamicArray."0",
-		max = +dynamicArray."0",
-		iterator = dynamicArray.%GetIterator()
-	While iterator.%GetNext(, .val) {
-		Set:val>max max = +val
-		Set:val<min&&val min = +val
-	}
-	Return $zHorolog - start
-}
-
-/// ----------------------------
-
-BenchmarkStringConcat(&data) public {
-	$$$RunScenarios(100, .buffer)
-}
-
-/// Best
-BenchmarkStringConcatDefault(&unused) public {
-	Set input = "",
-		$piece(input, "x", 500000) = "",
-		start = $zHorolog
-	Set output = input _ input
-	Return $zHorolog - start
-}
-
-BenchmarkStringConcatInPlace(&buffer) public {
-	Set input = "",
-		$piece(input, "x", 500000) = "",
-		start = $zHorolog
-	Set:'$data(buffer) buffer = "",
-		$piece(buffer, "z", 1000000) = ""
-	Set $extract(buffer,      1, 500000) = input,
-		$extract(buffer, 500001,      *) = input
-	Return $zHorolog - start
-}
-
-/// ----------------------------
-
-BenchmarkToString(&data) public {
-	Set string="123"
-	For i=1:1:10000 Set string = string _ "," _ $random(112312541234)
-	Set stringVector = $vectorOp("fromstring", string, "string"),
-		decimalVector = $vectorOp("fromstring", string, "decimal")
-	$$$RunScenarios(10, stringVector, decimalVector, decimalVector, decimalVector, decimalVector, decimalVector)
-}
-
-BenchmarkToStringVectorMaskEarly(sourceIdVector, bpFluxMinVector, bpFluxMaxVector, rpFluxMinVector, rpFluxMaxVector, fluxMaxPercentChangeVector) public {
-	Set start = $zHorolog,
-		mask = $vectorOp(">", fluxMaxPercentChangeVector, $$$minRequiredFluxPercentChange),
-		out = $vectorOp("tostring", 
-			$vectorOp("e_", 
-				$vectorOp("v_",  $vectorOp("v_", $vectorOp("v_", $vectorOp("v_", $vectorOp("v_",
-					$vectorOp("_",                                     sourceIdVector,                                    ",", mask),
-					$vectorOp("_", $vectorOp("convert",                $vectorOp("mask",bpFluxMinVector,mask), "string"), ",")),
-					$vectorOp("_", $vectorOp("convert",                $vectorOp("mask",bpFluxMaxVector,mask), "string"), ",")),
-					$vectorOp("_", $vectorOp("convert",                $vectorOp("mask",rpFluxMinVector,mask), "string"), ",")),
-					$vectorOp("_", $vectorOp("convert",                $vectorOp("mask",rpFluxMaxVector,mask), "string"), ",")),
-					/*          */ $vectorOp("convert", $vectorOp("*", fluxMaxPercentChangeVector, 100, mask), "string")
-				),$char(10)
-			), ""
-		)
-	Return $zHorolog - start
-}
-
-BenchmarkToStringVectorMaskLate(sourceIdVector, bpFluxMinVector, bpFluxMaxVector, rpFluxMinVector, rpFluxMaxVector, fluxMaxPercentChangeVector) public {
-	Set start = $zHorolog,
-		out = $vectorOp("tostring", 
-			$vectorOp("e_", 
-				$vectorOp("mask", 
-					$vectorOp("v_",  $vectorOp("v_", $vectorOp("v_", $vectorOp("v_", $vectorOp("v_",
-						$vectorOp("_",                                     sourceIdVector,                              ","),
-						$vectorOp("_", $vectorOp("convert",                bpFluxMinVector,                  "string"), ",")),
-						$vectorOp("_", $vectorOp("convert",                bpFluxMaxVector,                  "string"), ",")),
-						$vectorOp("_", $vectorOp("convert",                rpFluxMinVector,                  "string"), ",")),
-						$vectorOp("_", $vectorOp("convert",                rpFluxMaxVector,                  "string"), ",")),
-						/*          */ $vectorOp("convert", $vectorOp("*", fluxMaxPercentChangeVector, 100), "string")
-					), 
-					$vectorOp(">", fluxMaxPercentChangeVector, $$$minRequiredFluxPercentChange)
-				), $char(10)
-			), ""
-		)
-	Return $zHorolog - start
-}
-
-/// Best
-BenchmarkToStringLoop(sourceIdVector, bpFluxMinVector, bpFluxMaxVector, rpFluxMinVector, rpFluxMaxVector, fluxMaxPercentChangeVector) public {
-	Set dataRow = $vectorOp("length",sourceIdVector),
-		start = $zHorolog
-	For i=1:1:dataRow {
-		Set percentChange = $vector(fluxMaxPercentChangeVector, i)
-		Set:percentChange>$$$minRequiredFluxPercentChange out = $c(10) _ $vector(sourceIdVector, i) _ "," _ $vector(bpFluxMinVector, i) _ "," _ $vector(bpFluxMaxVector, i) _ "," _ $vector(rpFluxMinVector, i) _ "," _ $vector(rpFluxMaxVector, i) _ "," _ (percentChange * 100)
-	}
-	Return $zHorolog - start
-}
-
-/// ----------------------------
-
-BenchmarkWrite(&data) public {
-	$$$RunScenarios(1000)
-}
-
-/// Best
-BenchmarkWriteConcat(x=1, y=2, z="test") public {
-	Set start = $zHorolog, 
-		oldIO = $IO
-	Open "/dev/null"
-	Use "/dev/null"
-	For i=1:1:1000 Write "a" _ x _ "bldf" _ y _ "yw45srt" _ z _ $char(10)
-	Set ret = $zHorolog - start
-	Close "/dev/null"
-	Use oldIO
-	Return ret
-}
-
-BenchmarkWriteMultiple(x=1, y=2, z="test") public {
-	Set start = $zHorolog, 
-		oldIO = $IO
-	Open "/dev/null"
-	Use "/dev/null"
-	For i=1:1:1000 Write "a", x, "bldf", y, "yw45srt", z, $c(10)
-	Set ret = $zHorolog - start
-	Close "/dev/null" Use oldIO
-	Return ret
-}
-
-/// --------------------------
-
-BenchmarkMaxPercent(&data) public {
-	$$$RunScenarios(25, 30000)
-}
-
-/// Best (typically beats Hybrid by a _small_ amount)
-BenchmarkMaxPercentVector(length) public {
-	For i=1:1:length {
-		Set $vector(bpFluxMaxVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(bpFluxMinVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(rpFluxMaxVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(rpFluxMinVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874))
-	}
-	Set start = $zHorolog,
-		bpFluxPercentChangeVector = $vectorOp("v/", $vectorOp("v-", bpFluxMaxVector, bpFluxMinVector), bpFluxMinVector, $vectorOp("!=", bpFluxMinVector, 0)),
-		rpFluxPercentChangeVector = $vectorOp("v/", $vectorOp("v-", rpFluxMaxVector, rpFluxMinVector), rpFluxMinVector, $vectorOp("!=", rpFluxMinVector, 0)),
-		fluxMaxPercentChangeVector = $vectorOp("vset", bpFluxPercentChangeVector, rpFluxPercentChangeVector, $vectorOp("v<", bpFluxPercentChangeVector, rpFluxPercentChangeVector))
-	Return $zHorolog - start
-}
-
-BenchmarkMaxPercentLoop(length) public {
-	For i=1:1:length {
-		Set bpFluxMax(i) = +($random(12351239874) _ "." _ $random(12351239874)),
-			bpFluxMin(i) = +($random(12351239874) _ "." _ $random(12351239874)),
-			rpFluxMax(i) = +($random(12351239874) _ "." _ $random(12351239874)),
-			rpFluxMin(i) = +($random(12351239874) _ "." _ $random(12351239874))
-	}
-	Set start = $zHorolog
-	For i=1:1:length {
-		If bpFluxMin(i) {
-			Set maxPercentChange = bpFluxMax(i) - bpFluxMin(i) / bpFluxMin(i)
-			If rpFluxMin(i) {
-				Set tmp = rpFluxMax(i) - rpFluxMin(i) / rpFluxMin(i)
-				Set:tmp>maxPercentChange maxPercentChange = tmp
-			}
-		} ElseIf rpFluxMin(i) {
-			Set maxPercentChange = rpFluxMax(i) - rpFluxMin(i) / rpFluxMin(i)
-		}
-	}
-	Return $zHorolog - start
-}
-
-BenchmarkMaxPercentHybrid(length) public {
-	For i=1:1:length {
-		Set $vector(bpFluxMaxVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(bpFluxMinVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(rpFluxMaxVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874)),
-			$vector(rpFluxMinVector, i, "decimal") = +($random(12351239874) _ "." _ $random(12351239874))
-	}
-	Set start = $zHorolog,
-		bpFluxPercentChangeVector = $vectorOp("v/", $vectorOp("v-", bpFluxMaxVector, bpFluxMinVector), bpFluxMinVector, $vectorOp("!=", bpFluxMinVector, 0)),
-		rpFluxPercentChangeVector = $vectorOp("v/", $vectorOp("v-", rpFluxMaxVector, rpFluxMinVector), rpFluxMinVector, $vectorOp("!=", rpFluxMinVector, 0))
-	For i=1:1:length {
-		Set fluxMaxPercentChange = $vector(bpFluxPercentChangeVector, i),
-			rpFluxPercentChange = $vector(rpFluxPercentChangeVector, i)
-		Set:rpFluxPercentChange>fluxMaxPercentChange fluxMaxPercentChange = rpFluxPercentChange
-	}
-	Return $zHorolog - start
-}
-
-#EndIf
-
