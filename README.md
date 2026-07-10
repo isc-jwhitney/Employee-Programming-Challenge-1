@@ -6,12 +6,12 @@ Produce a correct ObjectScript-only\* solution to the challenge, using a minimal
 
 \* System functions are allowed, but direct use of other languages/libraries/programs (eg. via `$zf`) is not.
 
-## Code
+## Code (468 characters)
 ```objectscript
 d $zu(168,"~/dev/data") s f=$zse("in/*") f{s o="out"_$e(f,3,*-3) o f:/GZIP,o:"WT" u o w "source_id,bp_min_flux,bp_max_flux,rp_min_flux,rp_max_flux,percentage_change" u f f i=1:1:367{r l} try{f{f i=2:1:3{s t=$vop("fromstring",$p(l,"[",i*5),"decimal"),a(i)=$vop("max",t),c(i)=$vop("min",t,$vop("!=",t,0)),b(i)=$s(c(i):a(i)-c(i)/c(i),1:0)} s:b(3)>b(2) b(2)=b(3) u o w:b(2)>1 !,$lts($lb($p(l,",",2),c(2),a(2),c(3),a(3),b(2)*100)) u f r l}}catch{c o,f} s f=$zse("") q:f=""}
 ```
 
-## Code explanation (commands expanded / whitespace added for readability)
+## Explanation (commands expanded / whitespace added for readability)
 
 ```objectscript
   // Set the current working directory to "/home/irisowner/dev/data".
