@@ -2,106 +2,111 @@
 
 ## Goal
 
-A correct ObjectScript-only\* solution to the challenge, that runs as quickly as possible. 
+Produce a correct ObjectScript-only\* solution to the challenge, using a minimal number of characters.
 
 \* System functions are allowed, but direct use of other languages/libraries/programs (eg. via `$zf`) is not.
 
-## Usage
+## Code
+```objectscript
+d $zu(168,"~/dev/data") s f=$zse("in/*") f{s o="out"_$e(f,3,*-3) o f:/GZIP,o:"WT" u o w "source_id,bp_min_flux,bp_max_flux,rp_min_flux,rp_max_flux,percentage_change" u f f i=1:1:367{r l} try{f{f i=2:1:3{s t=$vop("fromstring",$p(l,"[",i*5),"decimal"),a(i)=$vop("max",t),c(i)=$vop("min",t,$vop("!=",t,0)),b(i)=$s(c(i):a(i)-c(i)/c(i),1:0)} s:b(3)>b(2) b(2)=b(3) u o w:b(2)>1 !,$lts($lb($p(l,",",2),c(2),a(2),c(3),a(3),b(2)*100)) u f r l}}catch{c o,f} s f=$zse("") q:f=""}
+```
 
-Clone this repository, and ensure that user id `51773` has write access to `./data/out` and `./data/temp` (eg. by running `sudo chown -R 51773:51773 ./data`).
+## Code explanation (commands expanded / whitespace added for readability)
 
-| Call                                      | Description                                                                | Prerequisites                                                                  |
-| ----------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `src/reset-environment.sh`                | Set up the Docker container.                                               | No prerequisites.                                                              |
-| `src/test-cold-start.sh (num_iterations)` | Set up the Docker container, import `RunScript.mac`, and run the solution. | No prerequisites.                                                              |
-| `src/test-warm-start.sh (num_iterations)` | Import `RunScript.mac` and run the solution.                               | Requires an already-set-up Docker container.                                   |
-| `src/iris-session.sh`                     | Open up an IRIS session in the Docker container.                           | Requires an already-set-up Docker container.                                   | 
-| - `Do ^RunScript`                         | Run the solution.                                                          | Requires an already-set-up Docker container with `src/RunScript.mac` imported. |             
-| - `Do Reload^RunScript`                   | Import a new version of `RunScript.mac` into the IRIS instance.            | Requires an already-set-up Docker container with `src/RunScript.mac` imported. |
-| `src/cat-output.sh`                       | Display the the contents of the output files (from `data/out`).            | Requires the solution to have been run, to produce output files.               |
-
-## Approach
-
-I broke down the steps the program needed to take, and benchmarked different solutions to them:
-- **Parallel**: Spawn 20 processes and wait for them to complete work
-- **Read**: `Read` a `.csv.gz` file with different `open` parameters
-- **StringConcat**: Concatenate two long strings
-- **StringSkip**: Skip to / extract the the Nth character-delimited substring in a larger string
-- **MinMax**: Find min/max values from a string-format decimal array with NaNs (eg. `[1.013,NaN,NaN,8123.412]`)
-- **MaxPercent**: Convert two min/max list/vector pairs into a list/vector with the largest `(max-min)/min` value of the two
-- **ToString**: Convert multiple lists/vectors into a comma-separated string
-- **Write**: `Write` multiple chunks of data to a device
-
-![](./benchmark-box-and-whisker-charts.png)
-
-The implementation of those benchmarks can be found in `src/RunScript.mac` (disabled with `#If 0`).
-- Individual benchmarks can be run with `Do Benchmark<Name>^RunScript` (eg. `Do BenchmarkRead^RunScript`).
-- All benchmarks can be run with `Do Benchmark^RunScript`.
-
-## Runtime statistics
-
-Stats were collected on a Dell Precision 5570 laptop with an i9-12900H CPU, under Docker in WSL on Windows 11.
-
-_To enable / disable pre-extraction of input files, set `#Define PreExtractFiles` to `1` / `0` at the top of `src/RunScript.mac`._
-
-|          | "warm start" pre-extracted files<br>200 iterations | "cold start" pre-extracted files<br>100 iterations | "warm start" not-pre-extracted files<br>200 iterations | "cold start" not-pre-extracted-files<br>100 iterations |
-| -------- | -------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------ |
-| minimum  |                                 `0.503831 seconds` |                                 `0.616695 seconds` |                                     `0.778758 seconds` |                                     `0.949315 seconds` |
-| mean     |                                 `0.773311 seconds` |                                 `0.871965 seconds` |                                     `1.008956 seconds` |                                     `1.195569 seconds` |
-
-![](runtime-box-and-whisker-chart.png)
-
-### Breakdown of a "warm start" + pre-extracted files run
-
-| Section                           | Time                   | % of parent |
-| --------------------------------- | ---------------------- | ----------: |
-| `Run` ("Elapsed time" only)       | `0.910324 seconds`     | `100.00%`   |
-| - Waiting on children to finish   | `0.904862 seconds`     | ` 99.40%`   |
-| - Other time                      | `0.005462 seconds`     | `  0.60%`   |
-
-| Section                                     | Average Time       | Average % of parent |
-| ------------------------------------------- | :----------------- | ------------------- |
-| `RunOnFile` (end at `$System.Event.Signal`) | `0.617868 seconds` | `100.00%`           |
-| - Non-initial `Read` commands               | `0.287351 seconds` | ` 46.51%`           |
-| - Process line data                         | `0.211859 seconds` | ` 34.29%`           |
-| - Concat old + new read data                | `0.066154 seconds` | ` 10.71%`           |
-| - Skip to `source_id` in next line          | `0.034226 seconds` | `  5.54%`           |
-| - Other time                                | `0.008504 seconds` | `  1.38%`           |
-| - Construct and `write` output              | `0.004776 seconds` | `  0.77%`           |
-| - Calculate % change                        | `0.004437 seconds` | `  0.72%`           |
-| - Initial `Read` command                    | `0.000194 seconds` | `  0.03%`           |
-| - Skip commented lines ("#...")             | `0.000194 seconds` | `  0.03%`           |
-| - `Open` / `Use` commands                   | `0.000126 seconds` | `  0.02%`           |
-| - Signal parent process                     | `0.000047 seconds` | `  0.01%`           |
-
-### Breakdown of a "warm start" + not-pre-extracted files run
-
-| Section                           | Time (seconds)         | % of parent |
-| --------------------------------- | ---------------------- | ----------: |
-| `Run` ("Elapsed time" only)       | `1.525059 seconds`     | `100.00%`   |
-| - Waiting on children to finish   | `1.522190 seconds`     | ` 99.81%`   |
-| - Other time                      | `0.002869 seconds`     | `  0.19%`   |
-
-| Section                                     | Average Time       | Average % of parent |
-| ------------------------------------------- | :----------------- | ------------------- |
-| `RunOnFile` (end at `$System.Event.Signal`) | `0.966073 seconds` | `100.00%`           |
-| - Non-initial `Read` commands               | `0.584186 seconds` | ` 60.47%`           |
-| - Process line data                         | `0.241709 seconds` | ` 25.02%`           |
-| - Concat old + new read data                | `0.081371 seconds` | `  8.42%`           |
-| - Skip to `source_id` in next line          | `0.036941 seconds` | `  3.82%`           |
-| - Other time                                | `0.009309 seconds` | `  0.96%`           |
-| - Construct and `write` output              | `0.005113 seconds` | `  0.53%`           |
-| - Initial `Read` command                    | `0.002201 seconds` | `  0.23%`           |
-| - Calculate % change                        | `0.004454 seconds` | `  0.46%`           |
-| - `Open` / `Use` commands                   | `0.000519 seconds` | `  0.05%`           |
-| - Skip commented lines ("#...")             | `0.000205 seconds` | `  0.02%`           |
-| - Signal parent process                     | `0.000065 seconds` | `  0.01%`           |
-
-## Unimplemented ideas
-
-- Reduce background process activity / raise the priority of running processes.
-  - I tried setting a few IRIS switches, but they didn't have much effect on timing. 
-  - Looking at idle system performance, I don't think there's much overhead to reduce here.
-- Instead of concatenating old and new read data, rework processing logic to handle switching from old data to new data.
-- Use a group `$vectorOp` to calculate flux min/max of all `bp_flux` and `rp_flux` fields in a given file at once.
-- When a process finishes early, have it start "helping" other proceses (eg. by reading-ahead in the input file).
+```objectscript
+  // Set the current working directory to "/home/irisowner/dev/data".
+  // Equivalent to $System.Process.CurrentDirectory("~/dev/data")
+  do $zu(168, "~/dev/data")
+  
+  // Set the input filename `f` to the path of the first file under /home/irisowner/dev/data/in/*
+  set f = $zSearch("in/*")
+  
+  // Loop through all files
+  for {
+    
+    // Construct the output filename `o` from the input filename `f`
+    // Example: "in/EpochPhotometry_006602-007952.csv.gz" --> "out/EpochPhotometry_006602-007952.csv"
+    set o = "out" _ $extract(f, 3, *-3)
+    
+    // Open the input file `f` ("GZIP"ed) and the output file `o` ("W"rite / "T"runcate-if-exists)
+    open f:/GZIP, 
+         o:"WT"
+    
+    // Write a CSV header to the output file `o`
+    use o 
+    write "source_id,bp_min_flux,bp_max_flux,rp_min_flux,rp_max_flux,percentage_change"
+    
+    // Read and discard commented lines + the header at the beginning of the input CSV file `f` (this always comes out to 367 lines)
+    // Leave the first line of data in `l`
+    use f 
+    for i=1:1:367 {
+      read l 
+    } 
+    
+    // Loop until we hit the end of the current file
+    try {
+      for {
+      
+        // Loop twice: Once to process bp_flux (i=2), and once to process rp_flux (i=3)
+        // - bp_flux is the 10th (i*5 = 10) '['-delimited part of the line
+        // - rp_flux is the 15th (i*5 = 15) '['-delimited part of the line
+        // 
+        // Use i=2/3 instead of i=10/15 to save characters in the for loop (i=2:1:3 instead of i=10:5:15) and variable subscripts (b(2) instead of b(10)).
+        // 
+        for i=2:1:3 {
+          
+          // Convert bp_flux / rp_flux into a decimal vector `t`
+          //   NaN will be treated as 0
+          set t = $vectorOp("fromstring", $p(l, "[", i*5), "decimal"),
+          
+              // Set `a(i)` to the max value in the flux vector `t`
+              a(i) = $vectorOp("max", t),
+            
+              // Set `c(i)` to the min non-zero value in the flux vector `t`
+              c(i) = $vectorOp("min", t, $vectorOp("!=", t, 0)),
+            
+              // Set `b(i)` to the percent change value (max-min)/min, or 0 if min = 0
+              b(i) = $select(c(i): a(i) - c(i) / c(i), 1: 0)
+            
+        }
+        
+        // We've processed bp_flux and rp_flux at this point, and have:
+        // - a(2) = max bp_flux
+        // - a(3) = max rp_flux
+        // - b(2) = percent change bp_flux
+        // - b(3) = percent change rp_flux
+        // - c(2) = min bp_flux
+        // - c(3) = min rp_flux
+        
+        // Set b(2) to the larger of b(2) (percent change bp_flux) and b(3) (percent change rp_flux)
+        set:b(3)>b(2) b(2) = b(3)
+        
+        // If b(2) (max percent flux change) is greater than the threshold (1 = 100%),
+        //   write <newline>source_id,min_bp_flux,max_bp_flux,min_rp_flux,max_rp_flux,percent_change*100
+        // to the output file `o`
+        // 
+        // source_id is the 2nd ','-delimited part of the line
+        // 
+        // Use $listToString instead of writing out commas to save characters.
+        // 
+        use o 
+        write:b(2)>1 !, $listToString($listBuild($piece(l, ",", 2), c(2), a(2), c(3), a(3), b(2) * 100))
+        
+        // Read the next line `l` from the input file `f`
+        use f
+        read l
+      }
+    
+    // When we hit the end of the file, the read will throw an error
+    } catch {
+      
+      // Close the input file `f` and the output file `o` (flushes data, and makes it easier to re-run the solution) 
+      close o, f
+    }
+    
+    // Set `f` to the path of the next file from under [workingDirectory]/in/*
+    // If we've processed all of the files, exit the loop
+    set f = $zSearch("")
+    quit:f=""
+ }   
+```
